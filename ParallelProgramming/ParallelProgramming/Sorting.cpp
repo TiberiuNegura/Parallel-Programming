@@ -2,10 +2,12 @@
 
 #include <vector>
 #include <iostream>
+#include <tuple>
+#include <queue>
 #include <algorithm>
 #include <mpi.h>
 
-void Sorting::OddEvenSecvential(std::vector<int>& vecData)
+void Sorting::OddEvenSequential(std::vector<int>& vecData)
 {
 	bool bSorted = false;
 	while (!bSorted)
@@ -31,6 +33,25 @@ void Sorting::OddEvenSecvential(std::vector<int>& vecData)
 	}
 }
 
+void Sorting::RankingSortSequential(std::vector<int>& vecInitialData)
+{
+	std::vector<int> vecOutData(vecInitialData.size());
+	const int n = vecInitialData.size();
+
+	for (int i = 0; i < n; i++) 
+	{
+		int nRank = 0;
+		for (int j = 0; j < n; j++) 
+		{
+			if (vecInitialData[j] < vecInitialData[i] || (vecInitialData[j] == vecInitialData[i] && j < i))
+				nRank++;
+		}
+		vecOutData[nRank] = vecInitialData[i];
+	}
+
+	vecInitialData = vecOutData;
+}
+
 void Sorting::MPI_OddEven(std::vector<int>& vecData, int nRank, int nSize)
 {
 	int n = vecData.size();
@@ -40,7 +61,7 @@ void Sorting::MPI_OddEven(std::vector<int>& vecData, int nRank, int nSize)
 
 	MPI_Scatter(vecData.data(), nLocalDataSize, MPI_INT, vecLocalData.data(), nLocalDataSize, MPI_INT, 0, MPI_COMM_WORLD);
 
-	OddEvenSecvential(vecLocalData);
+	OddEvenSequential(vecLocalData);
 
 	for (int step = 0; step < nSize; step++)
 	{
@@ -81,7 +102,7 @@ void Sorting::MPI_OddEvenReplace(std::vector<int>& vecData, int nRank, int nSize
 
 	MPI_Scatter(vecData.data(), nLocalDataSize, MPI_INT, vecLocalData.data(), nLocalDataSize, MPI_INT, 0, MPI_COMM_WORLD);
 
-	OddEvenSecvential(vecLocalData);
+	OddEvenSequential(vecLocalData);
 
 	for (int step = 0; step < nSize; step++)
 	{
@@ -103,7 +124,88 @@ void Sorting::MPI_OddEvenReplace(std::vector<int>& vecData, int nRank, int nSize
 	MPI_Gather(vecLocalData.data(), nLocalDataSize, MPI_INT, vecData.data(), nLocalDataSize, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
-void Sorting::MPI_Sort(const std::vector<int>& vecData, int nRank, int nSize, std::function< void(std::vector< int >&) > sortFunction)
+void Sorting::MPI_RankingSort(std::vector<int>& vecData, int nRank, int nSize)
+{
+	int n = vecData.size();
+
+	std::vector<int> send_counts(nSize, n / nSize);
+	std::vector<int> displs(nSize, 0);
+	int remainder = n % nSize;
+
+	if (nRank == 0) 
+	{
+		for (int i = 0; i < remainder; i++) 
+			send_counts[i]++;
+		for (int i = 1; i < nSize; i++) 
+			displs[i] = displs[i - 1] + send_counts[i - 1];
+	}
+
+	MPI_Bcast(send_counts.data(), nSize, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Bcast(displs.data(), nSize, MPI_INT, 0, MPI_COMM_WORLD);
+
+	int local_size = send_counts[nRank];
+	std::vector<int> vecLocalData(local_size);
+
+	MPI_Scatterv(vecData.data(), send_counts.data(), displs.data(), MPI_INT,
+		vecLocalData.data(), local_size, MPI_INT,
+		0, MPI_COMM_WORLD);
+
+	RankingSortSequential(vecLocalData);
+
+	std::vector<int> recv_counts(nSize);
+	MPI_Gather(&local_size, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+	std::vector<int> final_data;
+	std::vector<int> displs_gather(nSize, 0);
+
+	if (nRank == 0) 
+	{
+		final_data.resize(n);
+		for (int i = 1; i < nSize; i++)
+			displs_gather[i] = displs_gather[i - 1] + recv_counts[i - 1];
+	}
+
+	MPI_Gatherv(vecLocalData.data(), local_size, MPI_INT, final_data.data(), recv_counts.data(), displs_gather.data(), MPI_INT, 0, MPI_COMM_WORLD);
+
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	if (nRank == 0)
+	{
+		std::vector<std::pair<int*, int>> subarrays;
+		int current_pos = 0;
+
+		for (int i = 0; i < nSize; i++)
+		{
+			subarrays.emplace_back(final_data.data() + current_pos, recv_counts[i]);
+			current_pos += recv_counts[i];
+		}
+
+		std::priority_queue<std::pair<int, std::pair<int*, int*>>, std::vector<std::pair<int, std::pair<int*, int*>>>, std::greater<> > pq;
+
+		for (auto& [start, size] : subarrays)
+		{
+			if (size > 0)
+				pq.push({ *start, {start, start + size} });
+		}
+
+		std::vector<int> merged;
+		merged.reserve(n);
+
+		while (!pq.empty())
+		{
+			auto [val, ptrs] = pq.top();
+			pq.pop();
+			merged.push_back(val);
+
+			if (++ptrs.first < ptrs.second)
+				pq.push({ *ptrs.first, {ptrs.first, ptrs.second} });
+		}
+
+		vecData = merged;
+	}
+}
+
+void Sorting::MPI_Sort(std::vector<int>& vecData, int nRank, int nSize, std::function< void(std::vector< int >&) > sortFunction)
 {
 	int nGlobalSize = vecData.size();
 	int nLocalSize = nGlobalSize / nSize;
@@ -129,6 +231,8 @@ void Sorting::MPI_Sort(const std::vector<int>& vecData, int nRank, int nSize, st
 
 			vecSortedData = MergeArrays(vecSortedData, vecNextChunk);
 		}
+
+		vecData = vecSortedData;
 	}
 }
 
@@ -207,11 +311,8 @@ void Sorting::BucketSortSequential(std::vector<int>& arr) {
 	}
 }
 
-void Sorting::MPI_Bucket_sort(std::vector<int>& vecData, int nRank, int nSize) {
-	int nRank, nSize;
-	MPI_Comm_rank(MPI_COMM_WORLD, &nRank);
-	MPI_Comm_size(MPI_COMM_WORLD, &nSize);
-
+void Sorting::MPI_Bucket_sort(std::vector<int>& vecData, int nRank, int nSize) 
+{
 	// Broadcast the max value from array
 	int local_max = nRank == 0 ? *std::max_element(vecData.begin(), vecData.end()) : 0;
 	MPI_Bcast(&local_max, 1, MPI_INT, 0, MPI_COMM_WORLD);
