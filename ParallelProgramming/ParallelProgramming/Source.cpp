@@ -4,19 +4,22 @@
 #include <fstream>
 #include <thread>
 
-std::vector<int> readFromFile(const std::string& filename) {
+std::vector<int> ReadFromFile(const std::string& filename) 
+{
 	std::vector<int> numbers;
 	std::ifstream inFile(filename);
-	if (inFile.is_open()) {
+
+	if (inFile.is_open()) 
+	{
 		int num;
-		while (inFile >> num) {
+		while (inFile >> num) 
 			numbers.push_back(num);
-		}
 		inFile.close();
+
 	}
-	else {
+	else 
 		std::cerr << "Error opening file!" << std::endl;
-	}
+
 	return numbers;
 }
 
