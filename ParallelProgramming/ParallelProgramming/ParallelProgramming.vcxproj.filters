@@ -26,5 +26,6 @@
     <ClInclude Include="Sorting.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <Text Include="input.txt" />
   </ItemGroup>
 </Project>
