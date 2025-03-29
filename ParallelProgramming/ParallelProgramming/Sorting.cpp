@@ -2,7 +2,6 @@
 
 #include <vector>
 #include <algorithm>
-#include <functional>
 #include <mpi.h>
 
 void Sorting::OddEvenSecvential(std::vector<int>& vecData)
