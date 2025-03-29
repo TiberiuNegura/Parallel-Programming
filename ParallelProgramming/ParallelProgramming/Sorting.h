@@ -12,9 +12,13 @@ public:
 
 	static void MPI_Sort(const std::vector<int>& vecData, int nRank, int nSize, std::function< void(std::vector< int >&) > sortFunction);
 
+	static void MPI_Bucket_sort(std::vector<int>& vec);
+
 	static void MergeSort(std::vector< int >& vec);
 
 	static void BubbleSort(std::vector< int >& vec);
+
+	static void BucketSortSequential(std::vector< int >& vec);
 
 	static std::vector< int > MergeArrays(const std::vector< int >& a, const std::vector< int >& b);
 };

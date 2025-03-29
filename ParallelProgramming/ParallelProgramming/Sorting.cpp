@@ -1,6 +1,7 @@
 #include "Sorting.h"
 
 #include <vector>
+#include <iostream>
 #include <algorithm>
 #include <mpi.h>
 
@@ -172,6 +173,99 @@ void Sorting::BubbleSort(std::vector< int >& vec)
 			}
 		}
 	} while (swapped);
+}
+
+void Sorting::BucketSortSequential(std::vector<int>& arr) {
+	int n = arr.size();
+	if (n <= 1) return;
+
+	// Find the maximum value to determine range
+	int maxVal = *std::max_element(arr.begin(), arr.end());
+
+	// Number of buckets (adjustable)
+	int bucketCount = 10;
+	std::vector<std::vector<int>> buckets(bucketCount);
+
+	// Insert elements into respective buckets
+	for (int num : arr) {
+		int index = (num * bucketCount) / (maxVal + 1); // Normalize to bucket index
+		buckets[index].push_back(num);
+	}
+
+	// Sort individual buckets
+	for (auto& bucket : buckets) {
+		Sorting::BubbleSort(bucket);
+		// TODO EXPERIMENT WITH std::sort(bucket.begin(), bucket.end());
+	}
+
+	// Concatenate all buckets into arr
+	int idx = 0;
+	for (const auto& bucket : buckets) {
+		for (int val : bucket) {
+			arr[idx++] = val;
+		}
+	}
+}
+
+void Sorting::MPI_Bucket_sort(std::vector<int>& vec) {
+	int rank, size;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	// Broadcast the max value from array
+	int local_max = rank == 0 ? *std::max_element(vec.begin(), vec.end()) : 0;
+	MPI_Bcast(&local_max, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+	// Broadcast input array
+	int n = vec.size();
+	MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+	std::vector<int> local_a;
+	if (rank == 0) local_a = vec;
+	else local_a.resize(n);
+
+	MPI_Bcast(local_a.data(), n, MPI_INT, 0, MPI_COMM_WORLD);
+
+	// Collect bucket elements
+	std::vector<int> bucket;
+	const int bucket_lower = rank * local_max / size;
+	const int bucket_upper = (rank + 1) * local_max / size;
+
+	for (int val : local_a) {
+		if (val >= bucket_lower && val < bucket_upper) {
+			bucket.push_back(val);
+		}
+	}
+
+	double time = MPI_Wtime();
+
+	// Sort local bucket
+	std::sort(bucket.begin(), bucket.end());
+
+	time = MPI_Wtime() - time;
+
+	std::cout << "Processor " << rank << " has sorted " << bucket.size() << " elements in " << time << " seconds." << std::endl;
+
+	// Gather bucket sizes
+	std::vector<int> counts(size), displs(size);
+	int local_count = bucket.size();
+	MPI_Gather(&local_count, 1, MPI_INT,
+		counts.data(), 1, MPI_INT,
+		0, MPI_COMM_WORLD);
+
+	// Prepare output buffer
+	if (rank == 0) {
+		displs[0] = 0;
+		for (int i = 1; i < size; ++i) {
+			displs[i] = displs[i - 1] + counts[i - 1];
+		}
+		vec.resize(displs.back() + counts.back());
+	}
+
+	// Gather sorted buckets
+	MPI_Gatherv(bucket.data(), local_count, MPI_INT,
+		vec.data(), counts.data(), displs.data(), MPI_INT,
+		0, MPI_COMM_WORLD);
 }
 
 std::vector< int > Sorting::MergeArrays(const std::vector< int >& a, const std::vector< int >& b)
