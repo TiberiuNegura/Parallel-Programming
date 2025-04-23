@@ -31,6 +31,8 @@ public:
 
 	static std::vector< int > MergeArrays(const std::vector< int >& a, const std::vector< int >& b);
 
+	static void MPI_ShellSort(std::vector<int>& data, int rank, int size);
+
 private:
     bool is_sorted_global(std::vector< int >& local_data, int p, int rank);
 };

@@ -28,4 +28,7 @@
     </ClInclude>
     <Text Include="input.txt" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="README.md" />
+  </ItemGroup>
 </Project>

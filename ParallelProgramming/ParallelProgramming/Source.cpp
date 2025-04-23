@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <filesystem>
 #include <mpi.h>
 #include <fstream>
@@ -13,8 +13,16 @@ std::vector<int> ReadFromFile(const std::string& filename)
 	if (inFile.is_open()) 
 	{
 		int num;
-		while (inFile >> num) 
+		int index = 0;
+		while (inFile >> num)
+		{
 			numbers.push_back(num);
+
+			if (index == 1000)
+				break;
+
+			index++;
+		}
 		inFile.close();
 
 	}
@@ -33,19 +41,21 @@ int main(int argc, char** argv)
 
 	double time = MPI_Wtime();
 	std::vector<int> numbers;
-	std::vector<int> localNumbers;
 
 	if (rank == 0)
 	{
-	numbers = ReadFromFile("input.txt");
-	localNumbers = std::vector<int>(numbers.begin(), numbers.begin() + 500000);
-	time = MPI_Wtime() - time;
-	std::cout << "Time to read file: " << time << std::endl;
+		numbers = ReadFromFile("input.txt");
+		time = MPI_Wtime() - time;
+		std::cout << "Time to read file: " << time << std::endl;
 	}
 
 	time = MPI_Wtime();
 
-	Sorting::ShellSortSequential(localNumbers);
+	//Sorting::MPI_Bucket_sort(numbers, rank, size);
+	//Sorting::MPI_Sort(numbers, rank, size, Sorting::BubbleSort);
+	//Sorting::MPI_OddEven(numbers, rank, size);
+	//Sorting::MPI_RankingSort(numbers, rank, size);
+	Sorting::MPI_ShellSort(numbers, rank, size);
 
 	time = MPI_Wtime() - time;
 
@@ -55,8 +65,8 @@ int main(int argc, char** argv)
 	}
 
 	if (rank == 0)
-		for (int i = 0; i < localNumbers.size() - 1; i++)
-			if (localNumbers[i] > localNumbers[i + 1])
+		for (int i = 0; i < numbers.size() - 1; i++)
+			if (numbers[i] > numbers[i + 1])
 				std::cout << "Error at index " << i << std::endl;
 
 	MPI_Finalize();
